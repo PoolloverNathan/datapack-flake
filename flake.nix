@@ -21,7 +21,7 @@
     ident = types.stringMatching "[0-9a-z_.-]+:[0-9a-z_/.-]+";
   in rec {
     formatter = perSystemWithPkgs (pkgs: pkgs.alejandra);
-    baseDatapackModule = {
+    datapackBaseModule = {
       options = {
         name = mkOption {
           type = types.string;
@@ -82,12 +82,28 @@
         };
       };
     };
+    datapackRecipeModule = {config, ...}: let
+      inherit (config.pkgs.lib) mapAttrs mapAttrs';
+    in {
+      options.recipes = mkOption {
+        type = with types; attrsOf (attrsOf (addCheck attrs (a: a ? type)));
+        default = {};
+      };
+      config.files = mapAttrs (_: v:
+        mapAttrs' (n: w: {
+          name = "recipes/${n}.json";
+          value = w;
+        })
+        v)
+      config.recipes;
+    };
     mkDatapack = module: let
       inherit
         (
           (evalModules {
             modules = [
-              baseDatapackModule
+              datapackBaseModule
+              datapackRecipeModule
               module
             ];
           })
@@ -145,7 +161,7 @@
         mkDatapack {
           pkgs = system;
           description = "Sample pack for mkDatapack.";
-          files.mypack."recipes/fire_charge_with_redstone.json" = {
+          recipes.mypack."fire_charge_with_redstone" = {
             type = "crafting_shapeless";
             ingredients = [
               {item = "minecraft:redstone";}
