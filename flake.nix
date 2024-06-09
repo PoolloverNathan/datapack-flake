@@ -97,6 +97,58 @@
         v)
       config.recipes;
     };
+    datapackTagsModule = {config, ...}: let
+      inherit (config.pkgs.lib)
+      mapAttrs
+      mapAttrs'
+      attrsToList
+      listToAttrs
+      concatMap
+      length
+      filter
+      showDefs;
+    in {
+      options.tags = mkOption {
+        type = with types;
+          attrsOf (attrsOf (attrsOf (coercedTo (listOf string) (values: {
+              replace = false;
+              inherit values;
+            }) (submodule {
+              options.replace = mkOption {
+                type = types.bool;
+                default = false;
+              };
+              options.values = mkOption {
+                type = with types; listOf string;
+                default = [];
+              };
+            }) // {
+              merge = loc: defs: let
+                replacers = filter (x: x.value.replace) defs;
+              in
+                if length replacers >= 2 then
+                  throw "Cannot have multiple tag definitions with replace = true\nDefinition values:${showDefs defs}"
+                else
+                  {
+                    replace = length replacers == 1;
+                    values = concatMap (x: x.value.values) defs;
+                  };
+            })));
+      };
+      config.files =
+        mapAttrs
+        (_: v: listToAttrs (concatMap
+          (p:
+            builtins.map
+            (q:
+              {
+                name = "tags/${p.name}/${q.name}.json";
+                inherit (q) value;
+              })
+            (attrsToList p.value))
+          (attrsToList v)))
+        config.tags;
+    };
     mkDatapack = module: let
       inherit
         (
@@ -104,6 +156,7 @@
             modules = [
               datapackBaseModule
               datapackRecipeModule
+              datapackTagsModule
               module
             ];
           })
@@ -173,6 +226,17 @@
             ];
             result.item = "minecraft:fire_charge";
             result.count = 3;
+          };
+          tags.mypack.items.foo = [
+            minecraft:a
+            mypack:b
+          ];
+          tags.mypack.items.bar = {
+            replace = true;
+            values = [
+              minecraft:c
+              mypack:d
+            ];
           };
         }
     );
