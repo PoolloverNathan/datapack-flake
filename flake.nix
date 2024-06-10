@@ -13,12 +13,24 @@
       attrNames
       evalModules
       mkOption
+        mkMerge
       types
+        splitString
       ;
     pkgsFor = system: import nixpkgs {inherit system;};
     perSystem = genAttrs (attrNames nixpkgs.legacyPackages);
     perSystemWithPkgs = f: perSystem (system: f (pkgsFor system));
-    ident = types.stringMatching "[0-9a-z_.-]+:[0-9a-z_/.-]+";
+    ident = types.strMatching "[0-9a-z_.-]+:[0-9a-z_/.-]+";
+      splitIdent =
+        s:
+        let
+          res = splitString ":" s;
+        in
+        assert builtins.length res == 2;
+        {
+          namespace = builtins.elemAt res 0;
+          path = builtins.elemAt res 1;
+        };
   in rec {
     formatter = perSystemWithPkgs (pkgs: pkgs.alejandra);
     datapackBaseModule = {
@@ -84,6 +96,7 @@
     };
     datapackRecipeModule = {config, ...}: let
       inherit (config.pkgs.lib) mapAttrs mapAttrs';
+          prePost48 = pre: post: if config.format >= 48 then post else pre;
     in {
       options.recipes = mkOption {
         type = with types; attrsOf (attrsOf (addCheck attrs (a: a ? type)));
@@ -93,7 +106,7 @@
         mapAttrs (
           _: v:
             mapAttrs' (n: w: {
-              name = "recipes/${n}.json";
+              name = "${prePost48 "recipes" "recipe"}/${n}.json";
               value = w;
             })
             v
@@ -163,6 +176,72 @@
         )
         config.tags;
     };
+      datapackFunctionModule =
+        { config, ... }:
+        let
+          inherit (config) format;
+          inherit (builtins) map;
+          inherit (config.pkgs.lib) concatMap concatLines attrsToList;
+          prePost48 = pre: post: if format >= 48 then post else pre;
+        in
+        {
+          options.functions = mkOption {
+            type =
+              with types;
+              attrsOf (
+                attrsOf (
+                  coercedTo (listOf singleLineStr) (commands: { inherit commands; }) (submodule {
+                    options.commands = mkOption { type = listOf singleLineStr; };
+                    options.addToTags = mkOption { type = listOf ident; default = []; };
+                  })
+                )
+              );
+          };
+          # config = mkMerge (
+          #   concatMap (
+          #     p:
+          #     map (q: {
+          #       files.${p.name}."${prePost48 "functions" "function"}/${q.name}.mcfunction" = concatLines q.value.commands;
+          #       tags = mkMerge (
+          #         map (
+          #           t:
+          #           let
+          #             inherit (splitIdent t) namespace path;
+          #           in
+          #           {
+          #             tags.functions.${namespace}.${path} = [ "${p.name}:${q.name}" ];
+          #           }
+          #         ) q.value.addToTags
+          #       );
+          #     }) (attrsToList p.value)
+          #   ) (attrsToList config.functions)
+          # );
+          config.files = mkMerge (
+            concatMap (
+              p:
+              map (q: {
+                ${p.name}."${prePost48 "functions" "function"}/${q.name}.mcfunction" = concatLines q.value.commands;
+              }) (attrsToList p.value)
+            ) (attrsToList config.functions)
+          );
+          config.tags = mkMerge (
+            concatMap (
+              p:
+              concatMap (
+                q:
+                map (
+                  t:
+                  let
+                    inherit (splitIdent t) namespace path;
+                  in
+                  {
+                    ${namespace}.functions.${path} = [ "${p.name}:${q.name}" ];
+                  }
+                ) q.value.addToTags
+              ) (attrsToList p.value)
+            ) (attrsToList config.functions)
+          );
+        };
     mkDatapack = module: let
       inherit
         (
@@ -171,6 +250,7 @@
               datapackBaseModule
               datapackRecipeModule
               datapackTagsModule
+                datapackFunctionModule
               module
             ];
           })
@@ -248,6 +328,14 @@
               "mypack:d"
             ];
           };
+          functions.mypack.foo = {
+            commands = [ "function mypack:bar" ];
+            addToTags = [ "minecraft:tick" ];
+          };
+          functions.mypack.bar = [
+            "effect give @a water_breathing 1 2 true"
+            "effect give @a slowness 1 2 true"
+          ];
         }
     );
   };
