@@ -285,7 +285,7 @@
               # bash
               ''
                 mkdir -p $out/${escapeShellArg (p.name + "/" + dirOf q.name)}
-                ln -s ${toFile (baseNameOf q.name) q.value} $out/${
+                cat <<<${escapeShellArg q.value} > $out/${
                   escapeShellArg (p.name + "/" + q.name)
                 }''
             ) (attrsToList p.value)
@@ -294,8 +294,8 @@
       packRoot = runCommand name {} ''
         set -ex
         mkdir $out
-        ln -s ${packMcMeta} $out/pack.mcmeta
-        ln -s ${packDataDir} $out/data
+        cp ${packMcMeta} $out/pack.mcmeta
+        cp -r ${packDataDir} $out/data
       '';
     in
       packRoot;
