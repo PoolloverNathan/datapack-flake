@@ -76,6 +76,7 @@
                 )
               )
             );
+          default = {};
           example = {
             mypack."recipes/fire_charge_with_redstone.json" = {
               type = "crafting_shapeless";
@@ -160,6 +161,7 @@
               )
             )
           );
+        default = {};
       };
       config.files =
         mapAttrs (
@@ -199,6 +201,7 @@
                   })
                 )
               );
+            default = {};
           };
           # config = mkMerge (
           #   concatMap (
@@ -298,6 +301,7 @@
                   };
                 })
               );
+            default = {};
           };
           options.origins.layers = mkOption {
             type =
@@ -330,6 +334,7 @@
                   })
                 )
               );
+            default = {};
           };
           options.origins.powers = mkOption { type = with types; attrsOf (attrsOf attrs); };
           config.files = mkMerge (
