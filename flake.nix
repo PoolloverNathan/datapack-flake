@@ -13,24 +13,22 @@
       attrNames
       evalModules
       mkOption
-        mkMerge
+      mkMerge
       types
-        splitString
+      splitString
       ;
     pkgsFor = system: import nixpkgs {inherit system;};
     perSystem = genAttrs (attrNames nixpkgs.legacyPackages);
     perSystemWithPkgs = f: perSystem (system: f (pkgsFor system));
     ident = types.strMatching "[0-9a-z_.-]+:[0-9a-z_/.-]+";
-      splitIdent =
-        s:
-        let
-          res = splitString ":" s;
-        in
-        assert builtins.length res == 2;
-        {
-          namespace = builtins.elemAt res 0;
-          path = builtins.elemAt res 1;
-        };
+    splitIdent = s: let
+      res = splitString ":" s;
+    in
+      assert builtins.length res == 2; {
+        namespace = builtins.elemAt res 0;
+        path = builtins.elemAt res 1;
+      };
+    stripNulls = import ./strip-nulls.nix;
   in rec {
     formatter = perSystemWithPkgs (pkgs: pkgs.alejandra);
     datapackBaseModule = {
@@ -71,7 +69,7 @@
                     attrs
                     (listOf anything)
                   ])
-                  builtins.toJSON
+                  (a: builtins.toJSON (stripNulls a))
                   string
                 )
               )
@@ -97,7 +95,10 @@
     };
     datapackRecipeModule = {config, ...}: let
       inherit (config.pkgs.lib) mapAttrs mapAttrs';
-          prePost48 = pre: post: if config.format >= 48 then post else pre;
+      prePost48 = pre: post:
+        if config.format >= 48
+        then post
+        else pre;
     in {
       options.recipes = mkOption {
         type = with types; attrsOf (attrsOf (addCheck attrs (a: a ? type)));
@@ -178,178 +179,180 @@
         )
         config.tags;
     };
-      datapackFunctionModule =
-        { config, ... }:
-        let
-          inherit (config) format;
-          inherit (builtins) map;
-          inherit (config.pkgs.lib) concatMap concatLines attrsToList;
-          prePost48 = pre: post: if format >= 48 then post else pre;
-        in
-        {
-          options.functions = mkOption {
-            type =
-              with types;
-              attrsOf (
-                attrsOf (
-                  coercedTo (listOf singleLineStr) (commands: { inherit commands; }) (submodule {
-                    options.commands = mkOption { type = listOf singleLineStr; };
-                    options.addToTags = mkOption {
-                      type = listOf ident;
-                      default = [ ];
-                    };
-                  })
-                )
-              );
-            default = {};
-          };
-          # config = mkMerge (
-          #   concatMap (
-          #     p:
-          #     map (q: {
-          #       files.${p.name}."${prePost48 "functions" "function"}/${q.name}.mcfunction" = concatLines q.value.commands;
-          #       tags = mkMerge (
-          #         map (
-          #           t:
-          #           let
-          #             inherit (splitIdent t) namespace path;
-          #           in
-          #           {
-          #             tags.functions.${namespace}.${path} = [ "${p.name}:${q.name}" ];
-          #           }
-          #         ) q.value.addToTags
-          #       );
-          #     }) (attrsToList p.value)
-          #   ) (attrsToList config.functions)
-          # );
-          config.files = mkMerge (
-            concatMap (
-              p:
-              map (q: {
-                ${p.name}."${prePost48 "functions" "function"}/${q.name}.mcfunction" = concatLines q.value.commands;
-              }) (attrsToList p.value)
-            ) (attrsToList config.functions)
+    datapackFunctionModule = {config, ...}: let
+      inherit (config) format;
+      inherit (builtins) map;
+      inherit (config.pkgs.lib) concatMap concatLines attrsToList;
+      prePost48 = pre: post:
+        if format >= 48
+        then post
+        else pre;
+    in {
+      options.functions = mkOption {
+        type = with types;
+          attrsOf (
+            attrsOf (
+              coercedTo (listOf singleLineStr) (commands: {inherit commands;}) (submodule {
+                options.commands = mkOption {type = listOf singleLineStr;};
+                options.addToTags = mkOption {
+                  type = listOf ident;
+                  default = [];
+                };
+              })
+            )
           );
-          config.tags = mkMerge (
+        default = {};
+      };
+      # config = mkMerge (
+      #   concatMap (
+      #     p:
+      #     map (q: {
+      #       files.${p.name}."${prePost48 "functions" "function"}/${q.name}.mcfunction" = concatLines q.value.commands;
+      #       tags = mkMerge (
+      #         map (
+      #           t:
+      #           let
+      #             inherit (splitIdent t) namespace path;
+      #           in
+      #           {
+      #             tags.functions.${namespace}.${path} = [ "${p.name}:${q.name}" ];
+      #           }
+      #         ) q.value.addToTags
+      #       );
+      #     }) (attrsToList p.value)
+      #   ) (attrsToList config.functions)
+      # );
+      config.files = mkMerge (
+        concatMap (
+          p:
+            map (q: {
+              ${p.name}."${prePost48 "functions" "function"}/${q.name}.mcfunction" = concatLines q.value.commands;
+            }) (attrsToList p.value)
+        ) (attrsToList config.functions)
+      );
+      config.tags = mkMerge (
+        concatMap (
+          p:
             concatMap (
-              p:
-              concatMap (
-                q:
+              q:
                 map (
-                  t:
-                  let
+                  t: let
                     inherit (splitIdent t) namespace path;
-                  in
-                  {
-                    ${namespace}.functions.${path} = [ "${p.name}:${q.name}" ];
+                  in {
+                    ${namespace}.functions.${path} = ["${p.name}:${q.name}"];
                   }
-                ) q.value.addToTags
-              ) (attrsToList p.value)
-            ) (attrsToList config.functions)
-          );
-        };
-      datapackOriginsModule =
-        { config, ... }:
-        {
-          options.origins.origins = mkOption {
-            type =
-              with types;
-              attrsOf (
-                attrsOf (submodule {
-                  options = {
-                    icon = mkOption { type = ident; };
-                    impact = mkOption {
-                      type = enum [
-                        0
-                        1
-                        2
-                        3
-                      ];
-                    };
-                    order = mkOption {
-                      type = int;
-                      default = 0;
-                    };
-                    powers = mkOption {
-                      type = listOf ident;
-                      default = [ ];
-                    };
-                    loading_priority = mkOption {
-                      type = int;
-                      default = 0;
-                    };
-                    unchoosable = mkOption {
-                      type = bool;
-                      default = false;
-                    };
-                    name = mkOption {
-                      type = nullOr string;
-                      default = null;
-                    };
-                    description = mkOption {
-                      type = nullOr string;
-                      default = null;
-                    };
-                    upgrades = mkOption {
-                      type = listOf (submodule {
-                        options.condition = mkOption { type = ident; };
-                        options.origin = mkOption { type = ident; };
-                        options.announcement = mkOption { type = string; };
-                      });
-                      default = [ ];
-                    };
-                  };
-                })
-              );
-            default = {};
-          };
-          options.origins.layers = mkOption {
-            type =
-              with types;
-              attrsOf (
-                attrsOf (
-                  coercedTo (listOf ident) (origins: { inherit origins; }) (submodule {
-                    options = {
-                      replace = mkOption {
-                        type = types.bool;
-                        default = false;
-                      };
-                      order = mkOption {
-                        type = types.nullOr types.int;
-                        default = null;
-                      };
-                      origins = mkOption {
-                        type = types.listOf ident;
-                        default = [ ];
-                      };
-                      enabled = mkOption {
-                        type = types.bool;
-                        default = true;
-                      };
-                      name = mkOption {
-                        type = types.nullOr types.string;
-                        default = null;
-                      };
-                    };
-                  })
                 )
-              );
-            default = {};
-          };
-          options.origins.powers = mkOption { type = with types; attrsOf (attrsOf attrs); };
-          config.files = mkMerge (
-            nixpkgs.lib.concatMap (
-              p:
-              map (q: { ${p.name}."origin_layers/${q.name}.json" = q.value; }) (nixpkgs.lib.attrsToList p.value)
-            ) (nixpkgs.lib.attrsToList config.origins.layers)
-            ++ nixpkgs.lib.concatMap (
-              p: map (q: { ${p.name}."origins/${q.name}.json" = q.value; }) (nixpkgs.lib.attrsToList p.value)
-            ) (nixpkgs.lib.attrsToList config.origins.origins)
-            ++ nixpkgs.lib.concatMap (
-              p: map (q: { ${p.name}."powers/${q.name}.json" = q.value; }) (nixpkgs.lib.attrsToList p.value)
-            ) (nixpkgs.lib.attrsToList config.origins.powers)
+                q.value.addToTags
+            ) (attrsToList p.value)
+        ) (attrsToList config.functions)
+      );
+    };
+    datapackOriginsModule = {config, ...}: {
+      options.origins.origins = mkOption {
+        type = with types;
+          attrsOf (
+            attrsOf (submodule {
+              options = {
+                icon = mkOption {type = ident;};
+                impact = mkOption {
+                  type = enum [
+                    0
+                    1
+                    2
+                    3
+                  ];
+                };
+                order = mkOption {
+                  type = int;
+                  default = 0;
+                };
+                powers = mkOption {
+                  type = listOf ident;
+                  default = [];
+                };
+                loading_priority = mkOption {
+                  type = int;
+                  default = 0;
+                };
+                unchoosable = mkOption {
+                  type = bool;
+                  default = false;
+                };
+                name = mkOption {
+                  type = nullOr string;
+                  default = null;
+                };
+                description = mkOption {
+                  type = nullOr string;
+                  default = null;
+                };
+                upgrades = mkOption {
+                  type = listOf (submodule {
+                    options.condition = mkOption {type = ident;};
+                    options.origin = mkOption {type = ident;};
+                    options.announcement = mkOption {type = string;};
+                  });
+                  default = [];
+                };
+              };
+            })
           );
-        };
+        default = {};
+      };
+      options.origins.layers = mkOption {
+        type = with types;
+          attrsOf (
+            attrsOf (
+              coercedTo (listOf ident) (origins: {inherit origins;}) (submodule {
+                options = {
+                  replace = mkOption {
+                    type = types.bool;
+                    default = false;
+                  };
+                  order = mkOption {
+                    type = types.nullOr types.int;
+                    default = null;
+                  };
+                  origins = mkOption {
+                    type = with types;
+                      listOf (either ident (submodule {
+                        options.origins = mkOption {
+                          type = listOf ident;
+                        };
+                        options.conditions = mkOption {
+                          type = attrs;
+                        };
+                      }));
+                    default = [];
+                  };
+                  enabled = mkOption {
+                    type = types.nullOr types.bool;
+                    default = null;
+                  };
+                  name = mkOption {
+                    type = types.nullOr types.string;
+                    default = null;
+                  };
+                };
+              })
+            )
+          );
+        default = {};
+      };
+      options.origins.powers = mkOption {type = with types; attrsOf (attrsOf attrs);};
+      config.files = mkMerge (
+        nixpkgs.lib.concatMap (
+          p:
+            map (q: {${p.name}."origin_layers/${q.name}.json" = q.value;}) (nixpkgs.lib.attrsToList p.value)
+        ) (nixpkgs.lib.attrsToList config.origins.layers)
+        ++ nixpkgs.lib.concatMap (
+          p: map (q: {${p.name}."origins/${q.name}.json" = q.value;}) (nixpkgs.lib.attrsToList p.value)
+        ) (nixpkgs.lib.attrsToList config.origins.origins)
+        ++ nixpkgs.lib.concatMap (
+          p: map (q: {${p.name}."powers/${q.name}.json" = q.value;}) (nixpkgs.lib.attrsToList p.value)
+        ) (nixpkgs.lib.attrsToList config.origins.powers)
+      );
+    };
     mkDatapack = module: let
       inherit
         (
@@ -358,8 +361,8 @@
               datapackBaseModule
               datapackRecipeModule
               datapackTagsModule
-                datapackFunctionModule
-                datapackOriginsModule
+              datapackFunctionModule
+              datapackOriginsModule
               module
             ];
           })
@@ -400,11 +403,12 @@
             ) (attrsToList p.value)
         ) (attrsToList files)
       );
-      packRoot = runCommand name {} ''
+      packRoot = runCommand (name + ".zip") {} ''
         set -ex
-        mkdir $out
-        cp ${packMcMeta} $out/pack.mcmeta
-        cp -r ${packDataDir} $out/data
+        trap '''''' EXIT
+        cp ${packMcMeta} pack.mcmeta
+        cp -r ${packDataDir} data
+        ${pkgs.zip}/bin/zip $out -r data pack.mcmeta
       '';
     in
       packRoot;
@@ -438,17 +442,17 @@
             ];
           };
           functions.mypack.foo = {
-            commands = [ "function mypack:bar" ];
-            addToTags = [ "minecraft:tick" ];
+            commands = ["function mypack:bar"];
+            addToTags = ["minecraft:tick"];
           };
-          functions.mypack.bar = [ "effect give @a water_breathing 1 2 true" ];
-          origins.layers.origins.origin = [ "mypack:origin" ];
+          functions.mypack.bar = ["effect give @a water_breathing 1 2 true"];
+          origins.layers.origins.origin = ["mypack:origin"];
           origins.origins.mypack.origin = {
             name = "Origin";
             description = "Hello, world!";
             icon = "minecraft:dirt";
             impact = 2;
-            powers = [ "mypack:power" ];
+            powers = ["mypack:power"];
           };
           origins.powers.mypack.power = {
             type = "origins:multiple";
