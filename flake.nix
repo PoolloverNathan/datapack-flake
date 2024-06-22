@@ -319,7 +319,7 @@
                         options.origins = mkOption {
                           type = listOf ident;
                         };
-                        options.conditions = mkOption {
+                        options.condition = mkOption {
                           type = attrs;
                         };
                       }));
