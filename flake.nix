@@ -69,7 +69,7 @@
                     attrs
                     (listOf anything)
                   ])
-                  (a: builtins.toJSON (stripNulls a))
+                  (a: builtins.deepSeq a (builtins.toJSON (stripNulls a)))
                   string
                 )
               )
