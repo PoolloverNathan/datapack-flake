@@ -48,6 +48,11 @@
           example = "Example Pack";
           description = "Description for the generated pack.";
         };
+        zip = mkOption {
+          type = types.bool;
+          default = true;
+          description = "Whether to produce a zip file instead of a directory.";
+        };
         pkgs = mkOption (
           {
             type = with types; coercedTo string pkgsFor pkgs;
@@ -373,6 +378,7 @@
         description
         pkgs
         files
+        zip
         ;
       inherit (pkgs) runCommand lib;
       inherit (lib) escapeShellArg attrsToList;
@@ -382,6 +388,7 @@
         pack.pack_format = format;
         pack.description = description;
       };
+      zipStr = if zip then "true" else "false";
       packDataDir = runCommand "${name}-data" {} (
         (
           # bash
@@ -406,9 +413,15 @@
       packRoot = runCommand (name + ".zip") {} ''
         set -ex
         trap '''''' EXIT
+        if ! ${zipStr}; then
+          mkdir $out
+          cd $out
+        fi
         cp ${packMcMeta} pack.mcmeta
         cp -r ${packDataDir} data
-        ${pkgs.zip}/bin/zip $out -r data pack.mcmeta
+        if ${zipStr}; then
+          ${pkgs.zip}/bin/zip $out -r data pack.mcmeta
+        fi
       '';
     in
       packRoot;
