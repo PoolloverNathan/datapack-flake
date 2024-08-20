@@ -253,6 +253,11 @@
       );
     };
     datapackOriginsModule = {config, ...}: {
+      options.origins.lib = mkOption {
+        internal = true;
+        type = types.attrs;
+        default = import ./origins-lib.nix config.pkgs config.origins.lib;
+      };
       options.origins.origins = mkOption {
         type = with types;
           attrsOf (
