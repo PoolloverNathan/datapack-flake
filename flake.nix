@@ -344,7 +344,10 @@
           );
         default = {};
       };
-      options.origins.powers = mkOption {type = with types; attrsOf (attrsOf attrs);};
+      options.origins.powers = mkOption {
+        type = with types; attrsOf (attrsOf attrs);
+        default = {};
+      };
       config.files = mkMerge (
         nixpkgs.lib.concatMap (
           p:
@@ -474,5 +477,12 @@
           name = "Foo";
         };
       };
+    packages = perSystem (system: {
+      empty = mkDatapack {
+        pkgs = system;
+        description = "An empty datapack.";
+        format = 42; # nobody really knows what format versions are; I can get away with this
+      };
+    });
   };
 }
