@@ -358,6 +358,10 @@
         ) (nixpkgs.lib.attrsToList config.origins.powers)
       );
     };
+    mkSystemDependentDatapack = module: perSystem (pkgs: mkDatapack {
+      inherit pkgs;
+      imports = [module];
+    });
     mkDatapack = module: let
       inherit
         (
@@ -425,53 +429,50 @@
       '';
     in
       packRoot;
-    defaultPackage = perSystem (
-      system:
-        mkDatapack {
-          pkgs = system;
-          description = "Sample pack for mkDatapack.";
-          recipes.mypack."fire_charge_with_redstone" = {
-            type = "crafting_shapeless";
-            ingredients = [
-              {item = "minecraft:redstone";}
-              {item = "minecraft:blaze_powder";}
-              [
-                {item = "minecraft:coal";}
-                {item = "minecraft:charcoal";}
-              ]
-            ];
-            result.item = "minecraft:fire_charge";
-            result.count = 3;
-          };
-          tags.mypack.items.foo = [
-            "minecraft:a"
-            "mypack:b"
+    defaultPackage =
+      mkSystemDependentDatapack {
+        description = "Sample pack for mkDatapack.";
+        recipes.mypack."fire_charge_with_redstone" = {
+          type = "crafting_shapeless";
+          ingredients = [
+            {item = "minecraft:redstone";}
+            {item = "minecraft:blaze_powder";}
+            [
+              {item = "minecraft:coal";}
+              {item = "minecraft:charcoal";}
+            ]
           ];
-          tags.mypack.items.bar = {
-            replace = true;
-            values = [
-              "minecraft:c"
-              "mypack:d"
-            ];
-          };
-          functions.mypack.foo = {
-            commands = ["function mypack:bar"];
-            addToTags = ["minecraft:tick"];
-          };
-          functions.mypack.bar = ["effect give @a water_breathing 1 2 true"];
-          origins.layers.origins.origin = ["mypack:origin"];
-          origins.origins.mypack.origin = {
-            name = "Origin";
-            description = "Hello, world!";
-            icon = "minecraft:dirt";
-            impact = 2;
-            powers = ["mypack:power"];
-          };
-          origins.powers.mypack.power = {
-            type = "origins:multiple";
-            name = "Foo";
-          };
-        }
-    );
+          result.item = "minecraft:fire_charge";
+          result.count = 3;
+        };
+        tags.mypack.items.foo = [
+          "minecraft:a"
+          "mypack:b"
+        ];
+        tags.mypack.items.bar = {
+          replace = true;
+          values = [
+            "minecraft:c"
+            "mypack:d"
+          ];
+        };
+        functions.mypack.foo = {
+          commands = ["function mypack:bar"];
+          addToTags = ["minecraft:tick"];
+        };
+        functions.mypack.bar = ["effect give @a water_breathing 1 2 true"];
+        origins.layers.origins.origin = ["mypack:origin"];
+        origins.origins.mypack.origin = {
+          name = "Origin";
+          description = "Hello, world!";
+          icon = "minecraft:dirt";
+          impact = 2;
+          powers = ["mypack:power"];
+        };
+        origins.powers.mypack.power = {
+          type = "origins:multiple";
+          name = "Foo";
+        };
+      };
   };
 }
