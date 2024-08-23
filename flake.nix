@@ -455,7 +455,7 @@
             ''
               mkdir -p ${escapeShellArg (dirOf p.name)}
               # ${p.value}
-              cp ${escapeShellArg p.value} ${escapeShellArg p.name}
+              cp ${escapeShellArg "${p.value}"} ${escapeShellArg p.name}
             ''
           ) (attrsToList paths)
         }
@@ -514,12 +514,6 @@
         pkgs = system;
         description = "An empty datapack.";
         format = 42; # nobody really knows what format versions are; I can get away with this
-      };
-      broken = mkDatapack {
-        pkgs = system;
-        description = "A pack for reproducing interesting Nix behavior.";
-        # UNCOMMENT FOR WEIRD BEHAVIOR
-        paths."foo.txt" = ./foo.txt;
       };
     });
   };
