@@ -31,7 +31,7 @@
     stripNulls = import ./strip-nulls.nix;
   in rec {
     formatter = perSystemWithPkgs (pkgs: pkgs.alejandra);
-    datapackBaseModule = {
+    datapackBaseModule = {config, ...}: {
       options = {
         name = mkOption {
           type = types.string;
@@ -41,7 +41,7 @@
         format = mkOption {
           type = types.ints.positive;
           default = 18; # 1.20.2
-          description = "The https://minecraft.fandom.com/wiki/Data_pack#Pack_formatpack format to be used for the datapack.";
+          description = "The pack format (https://minecraft.fandom.com/wiki/Data_pack#Pack_format) to be used for the datapack.";
         };
         description = mkOption {
           type = types.lines;
@@ -51,7 +51,21 @@
         zip = mkOption {
           type = types.bool;
           default = true;
-          description = "Whether to produce a zip file instead of a directory.";
+          description = "Produces a zip file instead of a directory. This can be sent as one file and still loaded by Minecraft.";
+        };
+        zipCompression = mkOption {
+          type = types.ints.between 0 9;
+          default = 9;
+          description = "The compression level to use when zipping. Ignored if [zip] is false.";
+        };
+        generateMeta = mkOption {
+          type = types.bool;
+          default = true;
+          description = "Whether to generate a pack.mcmeta file automatically.";
+        };
+        lib = mkOption {
+          type = types.attrs;
+          description = "Libraries";
         };
         pkgs = mkOption (
           {
@@ -65,6 +79,11 @@
             else {}
           )
         );
+        paths = mkOption {
+          type = with types; attrsOf path;
+          default = {};
+          description = "Paths to copy directly into the datapack.";
+        };
         files = mkOption {
           type = with types;
             attrsOf (
@@ -75,7 +94,7 @@
                     (listOf anything)
                   ])
                   (a: builtins.deepSeq a (builtins.toJSON (stripNulls a)))
-                  string
+                  str
                 )
               )
             );
@@ -96,6 +115,22 @@
             };
           };
         };
+      };
+      config = {
+        lib = nixpkgs.lib;
+        paths =
+          config.lib.concatMapAttrs (ns:
+            config.lib.mapAttrs' (path: value: {
+              name = "data/${ns}/${path}";
+              value = builtins.toFile (builtins.baseNameOf path) value;
+            }))
+          config.files
+          // config.lib.optionalAttrs config.generateMeta {
+            "pack.mcmeta" = config.pkgs.writers.writeJSON "pack.mcmeta" {
+              pack.pack_format = config.format;
+              pack.description = config.description;
+            };
+          };
       };
     };
     datapackRecipeModule = {config, ...}: let
@@ -366,10 +401,12 @@
         ) (nixpkgs.lib.attrsToList config.origins.powers)
       );
     };
-    mkSystemDependentDatapack = module: perSystem (pkgs: mkDatapack {
-      inherit pkgs;
-      imports = [module];
-    });
+    mkSystemDependentDatapack = module:
+      perSystem (pkgs:
+        mkDatapack {
+          inherit pkgs;
+          imports = [module];
+        });
     mkDatapack = module: let
       inherit
         (
@@ -383,105 +420,94 @@
               module
             ];
           })
-          .config
         )
-        name
-        format
+        config
+        ;
+      inherit
+        (config)
         description
+        format
+        name
+        paths
         pkgs
-        files
         zip
+        zipCompression
         ;
       inherit (pkgs) runCommand lib;
       inherit (lib) escapeShellArg attrsToList;
       inherit (builtins) baseNameOf dirOf toFile;
       concatMapLines = f: a: pkgs.lib.concatLines (builtins.map f a);
-      packMcMeta = pkgs.writers.writeJSON "${name}-pack.mcmeta" {
-        pack.pack_format = format;
-        pack.description = description;
-      };
-      zipStr = if zip then "true" else "false";
-      packDataDir = runCommand "${name}-data" {} (
-        (
-          # bash
-          ''
-            set -ex;
-            mkdir $out;
-          ''
-        )
-        + concatMapLines (
-          p:
-            concatMapLines (
-              q:
-              # bash
-              ''
-                mkdir -p $out/${escapeShellArg (p.name + "/" + dirOf q.name)}
-                cat <<<${escapeShellArg q.value} > $out/${
-                  escapeShellArg (p.name + "/" + q.name)
-                }''
-            ) (attrsToList p.value)
-        ) (attrsToList files)
-      );
-      packRoot = runCommand (name + ".zip") {} ''
+      zipStr =
+        if zip
+        then "true"
+        else "false";
+      packRoot = runCommand (name + lib.optionalString zip ".zip") {} ''
         set -ex
         trap '''''' EXIT
         if ! ${zipStr}; then
           mkdir $out
           cd $out
         fi
-        cp ${packMcMeta} pack.mcmeta
-        cp -r ${packDataDir} data
+        ${
+          concatMapLines (
+            p:
+            # bash
+            ''
+              mkdir -p $out/${escapeShellArg (dirOf p.name)}
+              cp ${escapeShellArg p.value} $out/${escapeShellArg p.name}
+            ''
+          ) (attrsToList paths)
+        }
         if ${zipStr}; then
-          ${pkgs.zip}/bin/zip $out -r data pack.mcmeta
+          ${pkgs.zip}/bin/zip $out -${builtins.toString zipCompression}r data pack.mcmeta
         fi
       '';
     in
-      packRoot;
-    defaultPackage =
-      mkSystemDependentDatapack {
-        description = "Sample pack for mkDatapack.";
-        recipes.mypack."fire_charge_with_redstone" = {
-          type = "crafting_shapeless";
-          ingredients = [
-            {item = "minecraft:redstone";}
-            {item = "minecraft:blaze_powder";}
-            [
-              {item = "minecraft:coal";}
-              {item = "minecraft:charcoal";}
-            ]
-          ];
-          result.item = "minecraft:fire_charge";
-          result.count = 3;
-        };
-        tags.mypack.items.foo = [
-          "minecraft:a"
-          "mypack:b"
+      packRoot // {inherit config;};
+    defaultPackage = mkSystemDependentDatapack {
+      description = "Sample pack for mkDatapack.";
+      recipes.mypack."fire_charge_with_redstone" = {
+        type = "crafting_shapeless";
+        ingredients = [
+          {item = "minecraft:redstone";}
+          {item = "minecraft:blaze_powder";}
+          [
+            {item = "minecraft:coal";}
+            {item = "minecraft:charcoal";}
+          ]
         ];
-        tags.mypack.items.bar = {
-          replace = true;
-          values = [
-            "minecraft:c"
-            "mypack:d"
-          ];
-        };
-        functions.mypack.foo = {
-          commands = ["function mypack:bar"];
-          addToTags = ["minecraft:tick"];
-        };
-        functions.mypack.bar = ["effect give @a water_breathing 1 2 true"];
-        origins.layers.origins.origin = ["mypack:origin"];
-        origins.origins.mypack.origin = {
-          name = "Origin";
-          description = "Hello, world!";
-          icon = "minecraft:dirt";
-          impact = 2;
-          powers = ["mypack:power"];
-        };
-        origins.powers.mypack.power = {
-          type = "origins:multiple";
-          name = "Foo";
-        };
+        result.item = "minecraft:fire_charge";
+        result.count = 3;
       };
+      tags.mypack.items.foo = [
+        "minecraft:a"
+        "mypack:b"
+      ];
+      tags.mypack.items.bar = {
+        replace = true;
+        values = [
+          "minecraft:c"
+          "mypack:d"
+        ];
+      };
+      functions.mypack.foo = {
+        commands = ["function mypack:bar"];
+        addToTags = ["minecraft:tick"];
+      };
+      functions.mypack.bar = ["effect give @a water_breathing 1 2 true"];
+      origins.layers.origins.origin = ["mypack:origin"];
+      origins.origins.mypack.origin = {
+        name = "Origin";
+        description = "Hello, world!";
+        icon = "minecraft:dirt";
+        impact = 2;
+        powers = ["mypack:power"];
+      };
+      origins.powers.mypack.power = {
+        type = "origins:multiple";
+        name = "Foo";
+      };
+    };
     packages = perSystem (system: {
       empty = mkDatapack {
         pkgs = system;
