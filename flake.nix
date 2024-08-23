@@ -80,7 +80,7 @@
           )
         );
         paths = mkOption {
-          type = with types; attrsOf path;
+          type = with types; attrsOf storePath;
           default = {};
           description = "Paths to copy directly into the datapack.";
         };
@@ -460,7 +460,7 @@
           ) (attrsToList paths)
         }
         if ${zipStr}; then
-          ${pkgs.zip}/bin/zip $out -${builtins.toString zipCompression}r data pack.mcmeta
+          ${pkgs.zip}/bin/zip $out -${builtins.toString zipCompression}r ${lib.escapeShellArgs (lib.mapAttrsToList (name: path: name) paths)}
         fi
       '';
     in
