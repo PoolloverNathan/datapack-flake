@@ -453,8 +453,9 @@
             p:
             # bash
             ''
-              mkdir -p $out/${escapeShellArg (dirOf p.name)}
-              cp ${escapeShellArg p.value} $out/${escapeShellArg p.name}
+              mkdir -p ${escapeShellArg (dirOf p.name)}
+              # ${p.value}
+              cp ${escapeShellArg p.value} ${escapeShellArg p.name}
             ''
           ) (attrsToList paths)
         }
@@ -494,7 +495,6 @@
         commands = ["function mypack:bar"];
         addToTags = ["minecraft:tick"];
       };
-      functions.mypack.bar = ["effect give @a water_breathing 1 2 true"];
       origins.layers.origins.origin = ["mypack:origin"];
       origins.origins.mypack.origin = {
         name = "Origin";
@@ -504,15 +504,22 @@
         powers = ["mypack:power"];
       };
       origins.powers.mypack.power = {
-        type = "origins:multiple";
+        type = "origins:simple";
         name = "Foo";
       };
     };
     packages = perSystem (system: {
+      default = defaultPackage.${system};
       empty = mkDatapack {
         pkgs = system;
         description = "An empty datapack.";
         format = 42; # nobody really knows what format versions are; I can get away with this
+      };
+      broken = mkDatapack {
+        pkgs = system;
+        description = "A pack for reproducing interesting Nix behavior.";
+        # UNCOMMENT FOR WEIRD BEHAVIOR
+        paths."foo.txt" = ./foo.txt;
       };
     });
   };
