@@ -80,7 +80,7 @@
           )
         );
         paths = mkOption {
-          type = with types; attrsOf storePath;
+          type = with types; attrsOf pathInStore;
           default = {};
           description = "Paths to copy directly into the datapack.";
         };
@@ -453,14 +453,14 @@
             p:
             # bash
             ''
-              mkdir -p ${escapeShellArg (dirOf p.name)}
+              mkdir -vp ${escapeShellArg (dirOf p.name)}
               # ${p.value}
-              cp ${escapeShellArg "${p.value}"} ${escapeShellArg p.name}
+              cp -vr ${escapeShellArg "${p.value}"} ${escapeShellArg p.name}
             ''
           ) (attrsToList paths)
         }
         if ${zipStr}; then
-          ${pkgs.zip}/bin/zip $out -${builtins.toString zipCompression}r ${lib.escapeShellArgs (lib.mapAttrsToList (name: path: name) paths)}
+          ${pkgs.zip}/bin/zip $out -${builtins.toString zipCompression}vr ${lib.escapeShellArgs (lib.mapAttrsToList (name: path: name) paths)}
         fi
       '';
     in
