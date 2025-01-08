@@ -44,6 +44,7 @@ pkgs.lib
         assert builtins.isString desc;
           data:
             mkPower name origins:multiple desc (data mkSubpower);
+  mkSubmulti = data: mkSubpower origins:multiple (data mkSubpower);
   mkHiddenMulti = data:
     mkHiddenPower origins:multiple (data mkSubpower);
   mkSimple = name: desc: mkPower name origins:simple desc {};
