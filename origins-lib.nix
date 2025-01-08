@@ -15,6 +15,12 @@ pkgs.lib
       type = "origins:and";
       inherit conditions;
     };
+  invertCond =
+    condition@{
+      inverted ? false,
+      ...
+    }:
+    condition // { inverted = !inverted; };
   orConds =
     conditions:
     assert builtins.isList conditions;
